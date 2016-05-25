@@ -1,5 +1,6 @@
 from PySide import QtCore
 from cdatgui.bases.list_model import ListModel
+import cdms2
 
 
 class CDMSVariableListModel(ListModel):
@@ -11,7 +12,6 @@ class CDMSVariableListModel(ListModel):
             return self.get(var_name_or_index)
         else:
             for v in self.values:
-                # print "Stored", type(v)
                 if v[0] == var_name_or_index:
                     return v[1]
             raise ValueError("No variable found with ID %s" % var_name_or_index)
@@ -21,8 +21,11 @@ class CDMSVariableListModel(ListModel):
 
     def get_variable_label(self, var):
         for label, value in self.values:
-            if value == var:
-                return label
+            try:
+                if value == var:
+                    return label
+            except (ValueError, cdms2.error.CDMSError):
+                pass
 
     def append(self, variable):
         super(CDMSVariableListModel, self).append((variable.id, variable))
@@ -43,9 +46,13 @@ class CDMSVariableListModel(ListModel):
         else:
             raise IndexError("Index %d out of range." % index)
 
-    def variable_exists(self, variable):
+    def variable_exists(self, variable_or_id):
+        if isinstance(variable_or_id, str):
+            v_id = variable_or_id
+        else:
+            v_id = variable_or_id.id
         for var in self.values:
-            if var[0] == variable.id:
+            if var[0] == v_id:
                 return True
         return False
 

@@ -19,12 +19,13 @@ class CDMSVariableList(QtGui.QListView):
             ind = variable
         else:
             # It's a variable
-            for ind, var in enumerate(self.model().variables):
-                if var.id == variable.id:
+            for ind, var in enumerate(self.model().values):
+                if var[0] == variable.id:
                     break
             else:
                 raise ValueError("Variable %s not in Variable List" % (variable.id))
-        self.model().remove_variable(ind)
+        res = self.model().remove_variable(ind)
+        return res
 
     def add_variable(self, cdmsvar):
         self.model().add_variable(cdmsvar)

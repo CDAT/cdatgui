@@ -7,10 +7,10 @@ from cdatgui.cdat.plotter import PlotInfo
 from functools import partial
 from cdatgui.variables import get_variables
 
-
 cdms_mime = "application/x-cdms-variable-list"
 vcs_gm_mime = "application/x-vcs-gm"
 vcs_template_mime = "application/x-vcs-template"
+
 
 class QCDATWidget(QtGui.QFrame):
     # TODO: Add a signal for addedPlots
@@ -36,6 +36,7 @@ class QCDATWidget(QtGui.QFrame):
         self.setAcceptDrops(True)
 
         self.mRenWin = vtk.vtkRenderWindow()
+        self.mRenWin.StencilCapableOn()
         self.iren = QVTKRenderWindowInteractor(parent=self, rw=self.mRenWin)
         self.canvas = None
 
@@ -126,6 +127,7 @@ class QCDATWidget(QtGui.QFrame):
         self.iren.show()
         self.dragTarget.hide()
         self.plotAdded.emit()
+        self.emitAllPlots.emit()
 
     def dragEnterEvent(self, event):
         accepted = set([cdms_mime, vcs_gm_mime, vcs_template_mime])

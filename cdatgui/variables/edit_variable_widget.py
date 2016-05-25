@@ -14,20 +14,27 @@
 #                                                                             #
 ###############################################################################
 from PySide import QtCore, QtGui
-from region import ROISelectionDialog
+
 from axes_widgets import QAxisList
+from cdatgui.utils import label
+from cdatgui.variables.manipulations.manipulation import Manipulations
 
 
 class EditVariableDialog(QtGui.QDialog):
-
     createdVariable = QtCore.Signal(object)
     editedVariable = QtCore.Signal(object)
 
-    def __init__(self, var, parent=None):
+    def __init__(self, var, var_list, parent=None):
         QtGui.QDialog.__init__(self, parent=parent)
-
+        self.setWindowModality(QtCore.Qt.ApplicationModal)
+        shortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape), self)
+        shortcut.activated.connect(self.reject)
+        self.valid = True
         self.var = var
+        self.var_list = var_list
         self.modified = False
+        self.manipulations = Manipulations()
+        self.manipulations.remove.connect(self.removeVar)
 
         self.setWindowTitle('Edit Variable "%s"' % var.id)
 
@@ -41,24 +48,23 @@ class EditVariableDialog(QtGui.QDialog):
         self.dims.setLayout(self.dimsLayout)
         v.addWidget(self.dims)
 
-        self.roiSelector = ROISelectionDialog(self)
-        self.roiSelector.setWindowFlags(self.roiSelector.windowFlags() |
-                                        QtCore.Qt.WindowStaysOnTopHint)
-        self.roiSelector.doneConfigure.connect(self.setRoi)
-
         self.axisList = QAxisList(None, var, self)
+        self.axisList.invalidParams.connect(self.disableApplySave)
+        self.axisList.validParams.connect(self.enableApplySave)
+        self.axisList.manipulationComboIndexesChanged.connect(
+            lambda: self.enableApplySave() if self.valid else self.disableApplySave())
         v.addWidget(self.axisList)
 
         h = QtGui.QHBoxLayout()
-        self.selectRoiButton = QtGui.QPushButton('Select Region Of Interest')
-        self.selectRoiButton.setDefault(False)
-        self.selectRoiButton.setHidden(True)
-        for axis in self.var.getAxisList():
-            if axis.isLatitude() or axis.isLongitude():
-                self.selectRoiButton.setHidden(False)
-                break
 
-        h.addWidget(self.selectRoiButton)
+        squeeze_label = label('Squeeze')
+        squeeze_check = QtGui.QCheckBox()
+        squeeze_check.setChecked(True)
+        squeeze_check.stateChanged.connect(self.setSqueeze)
+        squeeze_layout = QtGui.QHBoxLayout()
+        squeeze_layout.addWidget(squeeze_label)
+        squeeze_layout.addWidget(squeeze_check)
+        h.addLayout(squeeze_layout)
 
         s = QtGui.QSpacerItem(40, 20, QtGui.QSizePolicy.Expanding,
                               QtGui.QSizePolicy.Preferred)
@@ -82,27 +88,53 @@ class EditVariableDialog(QtGui.QDialog):
         # Define button
         self.btnApplyEdits.clicked.connect(self.applyEditsClicked)
         self.btnSaveEditsAs.clicked.connect(self.saveEditsAsClicked)
-        self.selectRoiButton.clicked.connect(self.selectRoi)
         self.axisList.axisEdited.connect(self.set_modified)
 
-    def set_modified(self, axis):
+    def setSqueeze(self, state):
+        if state == QtCore.Qt.Checked:
+            self.axisList.squeeze = True
+        elif state == QtCore.Qt.Unchecked:
+            self.axisList.squeeze = False
+        self.set_modified()
+
+    def removeVar(self, var):
+        self.var_list.remove_variable(var)
+        self.reject()
+
+    def enableApplySave(self):
+        self.valid = True
         self.btnApplyEdits.setEnabled(True)
+        self.btnSaveEditsAs.setEnabled(True)
 
-    def selectRoi(self):
-        (lat0, lat1), (lon0, lon1) = self.axisList.getROI()
-        self.roiSelector.setROI((lon0, lat0, lon1, lat1))
-        self.roiSelector.show()
+    def disableApplySave(self):
+        self.valid = False
+        self.btnApplyEdits.setEnabled(False)
+        self.btnSaveEditsAs.setEnabled(False)
 
-    def setRoi(self):
-        roi = self.roiSelector.getROI()
-        lon0, lat0, lon1, lat1 = roi
-        self.axisList.setROI((lat0, lat1), (lon0, lon1))
+    def set_modified(self, axis=None):
+        self.btnApplyEdits.setEnabled(True)
 
     def applyEditsClicked(self):
         newvar = self.axisList.var
+        newvar = self.applyManipulations(newvar)
         newvar.id = self.var.id
         self.editedVariable.emit(newvar)
         self.close()
+
+    def applyManipulations(self, var):
+        new_var = var
+        for axis_id, combo in self.axisList.manipulation_combos:
+            manipulation = combo.currentText()
+            if manipulation == 'Summation':
+                new_var = self.manipulations.sum(new_var, axis_id)
+            elif manipulation == 'Standard Deviation':
+                new_var = self.manipulations.std(new_var, axis_id)
+            elif manipulation == 'Geometric Mean':
+                new_var = self.manipulations.geometricMean(new_var, axis_id)
+            elif manipulation == 'Average':
+                new_var = self.manipulations.average(new_var, axis_id)
+
+        return new_var
 
     def saveEditsAsClicked(self):
         text, ok = QtGui.QInputDialog.getText(self, u"Save Variable As...", u"New Variable Name:")

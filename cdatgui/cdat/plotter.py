@@ -105,6 +105,8 @@ class PlotInfo(QtGui.QFrame):
             self.newIcon = None
             self.setLayout(self.dataLayout)
             self.dataLayout = None
+            self.manager.graphics_method = (vcs.getboxfill('default'), False)
+            self.manager.template = (vcs.gettemplate('default'), False)
             self.initialized.emit()
 
     def variableSync(self, variables):
@@ -124,6 +126,7 @@ class PlotManager(QtCore.QObject):
         self._gm = None
         self._vars = None
         self._template = None
+        self._type = None
 
     def name(self):
         if self.can_plot() is False:
@@ -141,13 +144,13 @@ class PlotManager(QtCore.QObject):
                 except AttributeError:
                     vars.append(v.id)
 
-        gm_type = vcs.graphicsmethodtype(self._gm)
         vars = " x ".join(vars)
-        return "%s (%s)" % (vars, gm_type)
+        return "%s (%s)" % (vars, self._type)
 
     def load(self, display):
         self.dp = display
-        self._gm = vcs.getgraphicsmethod(display.g_type, display.g_name)
+        self._gm = display.g_name
+        self._type = display.g_type
         self._vars = display.array
         self._template = vcs.gettemplate(display._template_origin)
 
@@ -156,17 +159,22 @@ class PlotManager(QtCore.QObject):
 
     @property
     def canvas(self):
-        # print "MANAGER CANVAS:", self.source.canvas
         return self.source.canvas
 
     def gm(self):
-        return self._gm
+        return vcs.getgraphicsmethod(self._type, self._gm)
 
     def set_gm(self, gm):
-        # check gm vs vars
-        self._gm = gm
-        if self.can_plot():
+        plot = True
+        if isinstance(gm, tuple):
+            plot = gm[1]
+            gm = gm[0]
+
+        self._gm = gm.name
+        self._type = vcs.graphicsmethodtype(gm)
+        if plot and self.can_plot():
             self.plot()
+        self.source.gm_label.setText(self._gm)
 
     graphics_method = property(gm, set_gm)
 
@@ -174,6 +182,10 @@ class PlotManager(QtCore.QObject):
         return self._vars
 
     def set_vars(self, v):
+        plot = True
+        if len(v) > 2:
+            plot = v[2]
+            v = v[:2]
         try:
             self._vars = (v[0], v[1])
         except TypeError:
@@ -189,8 +201,18 @@ class PlotManager(QtCore.QObject):
             else:
                 new_vars.append(var)
         self._vars = new_vars
-        if self.can_plot():
+        if plot and self.can_plot():
             self.plot()
+
+        valid_vars = []
+        for v in self._vars:
+            try:
+                if v.all():
+                    valid_vars.append(v)
+            except AttributeError:
+                continue
+
+        self.source.variableSync(valid_vars)
 
     variables = property(get_vars, set_vars)
 
@@ -199,9 +221,16 @@ class PlotManager(QtCore.QObject):
 
     def set_templ(self, template):
         # Check if gm supports templates
+        plot = True
+        if isinstance(template, tuple):
+            plot = template[1]
+            template = template[0]
+
         self._template = template
-        if self.can_plot():
+        if plot and self.can_plot():
             self.plot()
+
+        self.source.tmpl_label.setText(self.template.name)
 
     template = property(templ, set_templ)
 
@@ -229,7 +258,21 @@ class PlotManager(QtCore.QObject):
             self.dp.g_type = vcs.graphicsmethodtype(self.graphics_method)
 
             # Update the canvas
-            self.canvas.update()
+            # self.canvas.update() use this once update is not broken
+            args = []
+            for var in self.variables:
+                if var is not None:
+                    args.append(var)
+            if self.template is not None:
+                args.append(self.template.name)
+            else:
+                args.append("default")
+            if self.graphics_method is not None:
+                args.append(vcs.graphicsmethodtype(self.graphics_method))
+                args.append(self.graphics_method.name)
+
+            self.canvas.clear(preserve_display=True, render=False)
+            self.dp = self.canvas.plot(*args)
 
         else:
             args = []
@@ -247,4 +290,5 @@ class PlotManager(QtCore.QObject):
             if self.template is None:
                 self._template = vcs.gettemplate(self.dp._template_origin)
             if self.graphics_method is None:
-                self._gm = vcs.getgraphicsmethod(self.dp.g_type, self.dp.g_name)
+                self._gm = self.dp.g_name
+                self._type = self.dp.g_type

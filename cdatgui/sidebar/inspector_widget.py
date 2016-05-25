@@ -6,7 +6,8 @@ from cdatgui.graphics import get_gms
 from cdatgui.templates import get_templates
 from cdatgui.variables.edit_variable_widget import EditVariableDialog
 from cdatgui.templates.dialog import TemplateEditorDialog
-from cdatgui.graphics.dialog import BoxfillDialog
+from cdatgui.graphics.dialog import GraphicsMethodSaveDialog
+from cdatgui.graphics import gms_with_non_implemented_editors
 import vcs
 
 
@@ -59,12 +60,13 @@ class ComboButton(QtGui.QWidget):
 
 
 class InspectorWidget(StaticDockWidget):
-    plotters_updated = QtCore.Signal(list)
+    plotters_updated = QtCore.Signal()
 
     def __init__(self, spreadsheet, parent=None):
         super(InspectorWidget, self).__init__("Inspector", parent=parent)
         self.allowed_sides = [QtCore.Qt.DockWidgetArea.RightDockWidgetArea]
         spreadsheet.selectionChanged.connect(self.selection_change)
+        self.plotters_updated.connect(spreadsheet.tabController.currentWidget().replotPlottersUpdateVars)
         self.cells = []
         self.current_plot = None
         self.plots = PlotterListModel()
@@ -168,13 +170,15 @@ class InspectorWidget(StaticDockWidget):
         self.editVariable(var)
 
     def editGraphicsMethod(self, gm):
-        get_gms().replace(get_gms().indexOf("boxfill", gm), gm)
-        self.current_plot.graphics_method = gm
+        get_gms().replace(get_gms().indexOf(vcs.graphicsmethodtype(gm), gm), gm)
+        self.current_plot.graphics_method = (gm, False)
+        self.plotters_updated.emit()
 
     def makeGraphicsMethod(self, gm):
         get_gms().add_gm(gm)
         self.gm_instance_combo.setCurrentIndex(self.gm_instance_combo.count() - 1)
-        self.current_plot.graphics_method = gm
+        self.current_plot.graphics_method = (gm, False)
+        self.plotters_updated.emit()
 
     def editGM(self):
         gm_type = self.gm_type_combo.currentText()
@@ -182,31 +186,23 @@ class InspectorWidget(StaticDockWidget):
 
         gm = vcs.getgraphicsmethod(gm_type, gm_name)
         if self.gm_editor:
-            self.gm_editor.reject()
+            self.gm_editor.close()
             self.gm_editor.deleteLater()
-        self.gm_editor = BoxfillDialog(gm, self.var_combos[0].currentObj(), self.template_combo.currentObj())
+        self.gm_editor = GraphicsMethodSaveDialog(gm, self.var_combos[0].currentObj(), self.template_combo.currentObj())
         self.gm_editor.createdGM.connect(self.makeGraphicsMethod)
         self.gm_editor.editedGM.connect(self.editGraphicsMethod)
         self.gm_editor.show()
         self.gm_editor.raise_()
 
-    def makeTmpl(self, template):
-        get_templates().add_template(template)
-
-    def editTmpl(self, template):
-        ind = get_templates().indexOf(template)
-        if ind.isValid():
-            get_templates.replace(ind.row(), template)
-
     def editTemplate(self, tmpl):
-        if self.tmpl_editor:
-            self.tmpl_editor.reject()
-            self.tmpl_editor.deleteLater()
         self.tmpl_editor = TemplateEditorDialog(tmpl)
-        self.tmpl_editor.createdTemplate.connect(self.makeTmpl)
-        self.tmpl_editor.editedTemplate.connect(self.editTmpl)
+        self.tmpl_editor.doneEditing.connect(self.setTemplateCombo)
         self.tmpl_editor.show()
         self.tmpl_editor.raise_()
+
+    def setTemplateCombo(self, tmpl_name):
+        self.template_combo.setCurrentIndex(self.template_combo.findText(tmpl_name))
+        self.plotters_updated.emit()
 
     def deletePlot(self, plot):
         ind = self.plot_combo.currentIndex()
@@ -215,22 +211,50 @@ class InspectorWidget(StaticDockWidget):
 
     def setGMRoot(self, index):
         self.gm_instance_combo.setRootModelIndex(get_gms().index(index, 0))
+        self.edit_gm_button.setEnabled(False)
 
     def setTemplate(self, template):
-        self.current_plot.template = template
+        self.current_plot.template = (template, False)
+        self.plotters_updated.emit()
 
     def updateGM(self, index):
+        if self.gm_type_combo.currentText() not in gms_with_non_implemented_editors:
+            self.edit_gm_button.setEnabled(True)
         gm_type = self.gm_type_combo.currentText()
         gm_name = self.gm_instance_combo.currentText()
+        if gm_type in ['vector', '3d_vector', '3d_dual_scalar']:
+            self.var_combos[1].setEnabled(True)
+            enabled = True
+        else:
+            block = self.var_combos[1].blockSignals(True)
+            self.var_combos[1].setCurrentIndex(-1)
+            self.var_combos[1].blockSignals(block)
+            self.var_combos[1].setEnabled(False)
+            enabled = False
+            self.current_plot._vars = (self.current_plot.variables[0], None)
 
-        gm = vcs.getgraphicsmethod(gm_type, gm_name)
-        self.current_plot.graphics_method = gm
+        if enabled and self.var_combos[1].currentIndex() == -1:
+            gm = vcs.getgraphicsmethod(gm_type, gm_name)
+            self.current_plot.graphics_method = (gm, False)
+        else:
+            gm = vcs.getgraphicsmethod(gm_type, gm_name)
+            self.current_plot.graphics_method = (gm, False)
+
+        self.plotters_updated.emit()
 
     def setFirstVar(self, var):
-        self.current_plot.variables = [var, self.current_plot.variables[1]]
+        self.current_plot.variables = [var, self.current_plot.variables[1], False]
+        self.plotters_updated.emit()
 
     def setSecondVar(self, var):
-        self.current_plot.variables = [self.current_plot.variables[0], var]
+        old_vars = self.current_plot.variables
+        try:
+            self.current_plot.variables = [self.current_plot.variables[0], var.var, False]
+        except ValueError:
+            old_vars.append(False)
+            self.current_plot.variables = old_vars
+
+        self.plotters_updated.emit()
 
     def selectPlot(self, plot):
         plotIndex = self.plot_combo.currentIndex()
@@ -261,7 +285,7 @@ class InspectorWidget(StaticDockWidget):
             block = self.template_combo.blockSignals(True)
             self.template_combo.setCurrentIndex(self.template_combo.findText(plot.template.name))
             self.template_combo.blockSignals(block)
-            if self.gm_type_combo.currentText() == "boxfill":
+            if self.gm_instance_combo.currentText() != '' and self.gm_type_combo.currentText() not in gms_with_non_implemented_editors:
                 self.edit_gm_button.setEnabled(True)
             else:
                 self.edit_gm_button.setEnabled(False)
@@ -275,7 +299,6 @@ class InspectorWidget(StaticDockWidget):
                 v.setEnabled(False)
 
     def selection_change(self, selected):
-        plots = []
         self.cells = []
         self.plots.clear()
         for cell in selected:

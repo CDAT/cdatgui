@@ -7,6 +7,7 @@ class LegendPreviewWidget(QVCSWidget):
         super(LegendPreviewWidget, self).__init__(parent=parent)
         self.legend = None
         self.visibilityChanged.connect(self.visibility_toggled)
+        self.template_name = None
 
     def visibility_toggled(self, showing):
         if showing:
@@ -16,7 +17,10 @@ class LegendPreviewWidget(QVCSWidget):
         if self.canvas is None:
             return
         self.canvas.clear(render=False)
+        if self.template_name:
+            del vcs.elements['template'][self.template_name]
         template = vcs.createtemplate()
+        self.template_name = template.name
         template.blank()
 
         template.legend.priority = 1
@@ -33,8 +37,11 @@ class LegendPreviewWidget(QVCSWidget):
         template.legend.textorientation = text_orientation.name
         template.drawColorBar(self.legend.vcs_colors, self.legend.levels, self.legend.labels,
                               ext_1=self.legend.ext_left,
-                              ext_2=self.legend.ext_right, x=self.canvas, cmap=self.legend.colormap,
-                              style=[self.legend.fill_style], index=self.legend._gm.fillareaindices,
+                              ext_2=self.legend.ext_right,
+                              x=self.canvas,
+                              cmap=self.legend.colormap,
+                              style=[self.legend.fill_style],
+                              index=self.legend._gm.fillareaindices,
                               opacity=self.legend._gm.fillareaopacity)
 
         self.canvas.backend.renWin.Render()

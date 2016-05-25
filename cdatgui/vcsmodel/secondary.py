@@ -4,6 +4,7 @@ import vcs
 
 class LineElementsModel(VCSElementsModel):
     el_type = "line"
+
     def __init__(self):
         super(LineElementsModel, self).__init__()
         self.isa = vcs.isline
@@ -32,9 +33,11 @@ class TextElementsModel(VCSElementsModel):
             tc = vcs.gettextcombined(tc)
             if tc.To_name == name and tc.Tt_name == name:
                 return tc
+
         tc = vcs.createtextcombined()
         tc.Tt = tt
         tc.To = to
+
         return tc
 
     def isa(self, obj):
@@ -46,6 +49,7 @@ class TextElementsModel(VCSElementsModel):
 
 class FillareaElementsModel(VCSElementsModel):
     el_type = "fillarea"
+
     def __init__(self):
         super(FillareaElementsModel, self).__init__()
         self.isa = vcs.isfillarea
@@ -57,6 +61,7 @@ class FillareaElementsModel(VCSElementsModel):
 
 class MarkerElementsModel(VCSElementsModel):
     el_type = "marker"
+
     def __init__(self):
         super(MarkerElementsModel, self).__init__()
         self.isa = vcs.ismarker

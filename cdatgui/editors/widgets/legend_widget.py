@@ -9,6 +9,7 @@ from cdatgui.editors.colormap import QColormapEditor
 from cdatgui.utils import pattern_thumbnail
 from cdatgui.bases.dynamic_grid_layout import DynamicGridLayout
 from functools import partial
+import vcs
 
 
 class ForceResizeScrollArea(QtGui.QScrollArea):
@@ -190,7 +191,7 @@ class LegendEditorWidget(BaseOkWindowWidget):
         end_color_label = QtGui.QLabel("End Color:")
         extend_left_label = QtGui.QLabel("Extend Left")
         extend_right_label = QtGui.QLabel("Extend Right")
-        custom_fill_label = QtGui.QLabel("Custom Fill")
+        self.custom_fill_label = QtGui.QLabel("Custom Fill")
         labels_label = QtGui.QLabel("Labels:")
 
         # Timers
@@ -231,10 +232,10 @@ class LegendEditorWidget(BaseOkWindowWidget):
         self.end_color_button.clicked.connect(partial(self.createColormap, self.end_color_spin))
 
         # Create extend check boxes
-        extend_left_check = QtGui.QCheckBox()
-        extend_left_check.stateChanged.connect(self.updateExtendLeft)
-        extend_right_check = QtGui.QCheckBox()
-        extend_right_check.stateChanged.connect(self.updateExtendRight)
+        self.extend_left_check = QtGui.QCheckBox()
+        self.extend_left_check.stateChanged.connect(self.updateExtendLeft)
+        self.extend_right_check = QtGui.QCheckBox()
+        self.extend_right_check.stateChanged.connect(self.updateExtendRight)
 
         # Create custom fill icon
         self.custom_fill_icon = QtGui.QToolButton()
@@ -286,19 +287,23 @@ class LegendEditorWidget(BaseOkWindowWidget):
         start_color_layout.addWidget(start_color_label)
         start_color_layout.addWidget(self.start_color_spin)
         start_color_layout.addWidget(self.start_color_button)
+        self.start_color_widget = QtGui.QWidget()
+        self.start_color_widget.setLayout(start_color_layout)
 
         end_color_layout.addWidget(end_color_label)
         end_color_layout.addWidget(self.end_color_spin)
         end_color_layout.addWidget(self.end_color_button)
+        self.end_color_widget = QtGui.QWidget()
+        self.end_color_widget.setLayout(end_color_layout)
 
-        extend_layout.addWidget(extend_left_check)
+        extend_layout.addWidget(self.extend_left_check)
         extend_layout.addWidget(extend_left_label)
-        extend_layout.addWidget(extend_right_check)
+        extend_layout.addWidget(self.extend_right_check)
         extend_layout.addWidget(extend_right_label)
         extend_layout.insertStretch(2, 1)
 
         custom_fill_layout.addWidget(self.custom_fill_icon)
-        custom_fill_layout.addWidget(custom_fill_label)
+        custom_fill_layout.addWidget(self.custom_fill_label)
 
         # Add preview
         self.setPreview(LegendPreviewWidget())
@@ -307,8 +312,8 @@ class LegendEditorWidget(BaseOkWindowWidget):
 
         # Insert layouts
         self.vertical_layout.insertLayout(1, colormap_layout)
-        self.vertical_layout.insertLayout(2, start_color_layout)
-        self.vertical_layout.insertLayout(3, end_color_layout)
+        self.vertical_layout.insertWidget(2, self.start_color_widget)
+        self.vertical_layout.insertWidget(3, self.end_color_widget)
         self.vertical_layout.insertLayout(4, extend_layout)
         self.vertical_layout.insertLayout(5, custom_fill_layout)
         self.vertical_layout.insertLayout(6, labels_layout)
@@ -316,13 +321,46 @@ class LegendEditorWidget(BaseOkWindowWidget):
     def setObject(self, legend):
         self.object = legend
 
-        self.start_color_spin.setValue(self.object.color_1)
-        self.updateButtonColor(self.start_color_button, self.object.color_1)
-        self.start_color_button.setFixedSize(100, 25)
+        try:
+            self.start_color_spin.setValue(self.object.color_1)
+            self.updateButtonColor(self.start_color_button, self.object.color_1)
+            self.start_color_button.setFixedSize(100, 25)
+        except TypeError:
+            self.start_color_widget.setEnabled(False)
+            self.start_color_widget.hide()
 
-        self.end_color_spin.setValue(self.object.color_2)
-        self.updateButtonColor(self.end_color_button, self.object.color_2)
-        self.end_color_button.setFixedSize(100, 25)
+        try:
+            self.end_color_spin.setValue(self.object.color_2)
+            self.updateButtonColor(self.end_color_button, self.object.color_2)
+            self.end_color_button.setFixedSize(100, 25)
+        except TypeError:
+            self.end_color_widget.setEnabled(False)
+            self.end_color_widget.hide()
+
+        # disable the extend left and right if the gm does not have any - might not actually be needed
+        if self.object.ext_left is not None:
+            self.extend_left_check.setChecked(self.object.ext_left)
+        else:
+            self.extend_left_check.setEnabled(False)
+            self.extend_left_check.hide()
+
+        if self.object.ext_right is not None:
+            self.extend_right_check.setChecked(self.object.ext_right)
+        else:
+            self.extend_right_check.setEnabled(False)
+            self.extend_right_check.hide()
+
+        # disable the custom fill option if the fill style is not custom
+        if vcs.isboxfill(self.object._gm):
+            if self.object._gm.boxfill_type == 'custom':
+                self.enableCustom(self.object._gm.fillareastyle != 'solid')
+            else:
+                self.disableCustom()
+
+        elif self.object.fill_style:
+            self.enableCustom(self.object.fill_style != 'solid')
+        else:
+            self.disableCustom()
 
         self.preview.setLegendObject(legend)
         self.preview.update()
@@ -393,7 +431,7 @@ class LegendEditorWidget(BaseOkWindowWidget):
             self.fill_style_widget.setVisible(True)
             self.vertical_layout.insertLayout(6, self.custom_vertical_layout)
             self.custom_vertical_layout.addWidget(self.createCustomFillBox())
-            self.initateFillStyle(self.fill_button_group.button(-2))
+            self.initateFillStyle()
         else:
             self.object.fill_style = "Solid"
             self.fill_style_widget.setVisible(False)
@@ -402,10 +440,10 @@ class LegendEditorWidget(BaseOkWindowWidget):
 
         self.preview.update()
 
-    def initateFillStyle(self, old_button):
+    def initateFillStyle(self):
         """Used when creating custom fill to initalize fill style to Solid"""
         for button in self.fill_button_group.buttons():
-            if button.text() == old_button.text():
+            if button.text() == self.object.fill_style.capitalize():
                 button.click()
 
     def updateCustomFillBox(self):
@@ -413,7 +451,8 @@ class LegendEditorWidget(BaseOkWindowWidget):
             self.deleteCustomFillBox()
             self.custom_vertical_layout.addWidget(self.createCustomFillBox())
             self.vertical_layout.insertLayout(6, self.custom_vertical_layout)
-            self.initateFillStyle(self.fill_button_group.checkedButton())
+            # self.initateFillStyle(self.fill_button_group.checkedButton())
+            self.initateFillStyle()
 
     def createCustomFillBox(self):
         # create layout for custom fill
@@ -533,6 +572,18 @@ class LegendEditorWidget(BaseOkWindowWidget):
         self.end_timer.stop()
         self.end_color_button.setStyleSheet(
             self.end_color_button.styleSheet() + "border: 1px solid red;")
+
+    def enableCustom(self, show=False):
+        self.custom_fill_icon.setEnabled(True)
+        self.custom_fill_icon.show()
+        self.custom_fill_label.show()
+        if show and self.custom_fill_icon.arrowType() == QtCore.Qt.RightArrow:
+            self.updateArrowType()
+
+    def disableCustom(self):
+        self.custom_fill_icon.setEnabled(False)
+        self.custom_fill_icon.hide()
+        self.custom_fill_label.hide()
 
 
 if __name__ == "__main__":

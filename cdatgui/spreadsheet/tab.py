@@ -411,10 +411,10 @@ class StandardWidgetSheetTabInterface(object):
             for c in xrange(cCount):
                 widget = self.getCell(r, c)
                 if widget:
-                    widget.grabWindowPixmap().save(dirPath + '/' +
-                                                   chr(c + ord('a')) +
-                                                   str(r + 1) +
-                                                   '.' + format)
+                    widget.grabWindowPixmap().accept(dirPath + '/' +
+                                                     chr(c + ord('a')) +
+                                                     str(r + 1) +
+                                                     '.' + format)
 
     def setSpan(self, row, col, rowSpan, colSpan):
         """ setSpan(row, col, rowSpan, colSpan: int) -> None
@@ -442,7 +442,7 @@ class StandardWidgetSheetTab(QtGui.QWidget, StandardWidgetSheetTabInterface):
     displaying the spreadsheet.
 
     """
-
+    plotsRemoved = QtCore.Signal(list)
     selectionChanged = QtCore.Signal(list)
     emitAllPlots = QtCore.Signal(list)
 
@@ -492,7 +492,6 @@ class StandardWidgetSheetTab(QtGui.QWidget, StandardWidgetSheetTabInterface):
                     widget = QCDATWidget(r, c)
                     widget.plotAdded.connect(self.selectionChange)
                     widget.emitAllPlots.connect(self.totalPlotsChanged)
-                    # widget.emitAllPlots.connect(self.totalPlotsChanged)
                     cellWidget = QCellContainer(widget)
                     self.setCellByWidget(r, c, cellWidget)
 
@@ -513,6 +512,37 @@ class StandardWidgetSheetTab(QtGui.QWidget, StandardWidgetSheetTabInterface):
         for row in rows:
             for col in cols:
                 self.setCellByWidget(row, col, None)
+
+    def getCellWidgets(self):
+        row_count, col_count = self.getDimension()
+        cell_widgets = []
+        for r in xrange(row_count):
+            for c in xrange(col_count):
+                w = self.getCellWidget(r, c)
+                if w is not None and w.widget() is not None:
+                    cell_widgets.append(w)
+        return cell_widgets
+
+    def checkDisplayPlots(self, tracked_plots):
+        # print "checking display plots"
+        cell_widgets = self.getCellWidgets()
+        removed_plots = []
+        for cell in cell_widgets:
+            qcdat = cell.widget()
+            tracked_plots = qcdat.getPlotters()
+            # print "tracked plots", tracked_plots
+            d_names = qcdat.canvas.display_names
+            # print 'current d_names', d_names
+            for plot in tracked_plots:
+                # print "plot dp", plot.dp
+                # if plot.dp:
+                    # print "plot dp name", plot.dp.name
+                if plot.dp and plot.dp.name not in d_names:
+                    removed_plots.append(plot)
+
+        if removed_plots:
+            # print "plots removed"
+            self.plotsRemoved.emit(removed_plots)
 
     def rowSpinBoxChanged(self):
         """ rowSpinBoxChanged() -> None
@@ -538,6 +568,23 @@ class StandardWidgetSheetTab(QtGui.QWidget, StandardWidgetSheetTabInterface):
             self.createContainers()
             self.totalPlotsChanged()
 
+    def replotPlottersUpdateVars(self):
+
+        total_tabs = []
+        plots = []
+        for row in range(self.toolBar.rowSpinBox.value()):
+            for col in range(self.toolBar.colSpinBox.value()):
+                total_tabs.append(self.sheet.cellWidget(row, col))
+        for cell in total_tabs:
+            cell = cell.containedWidget
+            # cell is now a QCDATWidget
+            plotter = cell.getPlotters()
+            plots.extend(plotter)
+        for plot in plots:
+            if plot.can_plot():
+                plot.plot()
+        self.emitAllPlots.emit(total_tabs)
+
     def totalPlotsChanged(self):
         total_tabs = []
         for row in range(self.toolBar.rowSpinBox.value()):
@@ -546,7 +593,6 @@ class StandardWidgetSheetTab(QtGui.QWidget, StandardWidgetSheetTabInterface):
         self.emitAllPlots.emit(total_tabs)
 
     ### Belows are API Wrappers to connect to self.sheet
-
     def getDimension(self):
         """ getDimension() -> tuple
         Get the sheet dimensions

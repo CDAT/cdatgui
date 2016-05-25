@@ -158,13 +158,14 @@ def test_add_dialog(qtbot, var_manager):
 
 
 def test_variable_widget(qtbot):
-    w = cdatgui.variables.VariableWidget()
+    w = cdatgui.variables.variable_widget.VariableWidget()
     qtbot.addWidget(w)
 
     w.add_dialog = mocks.VariableAddDialog
 
     # Fake the signal to check for new variables
-    w.add_variable()
+    with qtbot.waitSignal(w.variableListNotEmpty, timeout=1000, raising=True):
+        w.add_variable()
 
     # Make sure that we can select a variable
     with qtbot.waitSignal(w.selectedVariable,

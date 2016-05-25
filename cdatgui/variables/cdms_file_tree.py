@@ -1,5 +1,7 @@
 from PySide import QtGui, QtCore
 import os.path
+from collections import OrderedDict
+
 from cdatgui.utils import icon
 import urlparse
 
@@ -11,7 +13,7 @@ label_icon = None
 
 class CDMSFileItem(QtGui.QTreeWidgetItem):
 
-    def __init__(self, text, parent=None):
+    def __init__(self, text, uri, parent=None):
         global label_font, label_icon_size, label_icon
 
         if label_font is None:
@@ -21,12 +23,14 @@ class CDMSFileItem(QtGui.QTreeWidgetItem):
             label_icon = icon("bluefile.png")
 
         super(CDMSFileItem, self).__init__(parent=parent)
+
+        self.uri = uri
         self.setSizeHint(0, label_icon_size)
         self.setIcon(0, label_icon)
         self.setText(1, text)
         self.setFont(1, label_font)
         self.setExpanded(True)
-        self.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled)
+        self.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled)
 
 
 class CDMSFileTree(QtGui.QTreeWidget):
@@ -52,7 +56,7 @@ class CDMSFileTree(QtGui.QTreeWidget):
 
         file_name = os.path.basename(parsed.path)
 
-        file_item = CDMSFileItem(file_name)
+        file_item = CDMSFileItem(file_name, cdmsfile.uri)
 
         for var in cdmsfile.variables:
             var_item = QtGui.QTreeWidgetItem()
@@ -64,11 +68,20 @@ class CDMSFileTree(QtGui.QTreeWidget):
 
     def get_selected(self):
         items = self.selectedItems()
-        variables = []
+        variables = OrderedDict()
         for item in items:
-            var_name = item.text(1)
-            file_index = self.indexOfTopLevelItem(item.parent())
-            cdmsfile = self.files_ordered[file_index]
-            variables.append(cdmsfile(var_name))
+            new_vars = []
+            if isinstance(item, CDMSFileItem):
+                for index in range(item.childCount()):
+                    new_vars.append(item.child(index))
+            else:
+                new_vars.append(item)
+            for var in new_vars:
+                var_name = var.text(1)
+                file_index = self.indexOfTopLevelItem(var.parent())
+                cdmsfile = self.files_ordered[file_index]
+                var_meta_item = cdmsfile(var_name)
+                if var.text(1) not in variables.values():
+                    variables[var_meta_item] = var.text(1)
 
-        return variables
+        return variables.keys()

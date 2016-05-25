@@ -8,7 +8,7 @@ from qtconsole.inprocess import QtInProcessKernelManager
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 
 from cdatgui.cdat.metadata import FileMetadataWrapper, VariableMetadataWrapper
-from cdatgui.variables import get_variables
+from cdatgui.variables import get_variables, reserved_words
 
 
 def is_cdms_var(v):
@@ -22,6 +22,7 @@ def is_displayplot(v):
 class ConsoleWidget(QtGui.QWidget):
     createdPlot = QtCore.Signal(object)
     updatedVar = QtCore.Signal()
+    checkDisplayPlots = QtCore.Signal(list)
 
     def __init__(self, parent=None):
         super(ConsoleWidget, self).__init__()
@@ -37,10 +38,6 @@ class ConsoleWidget(QtGui.QWidget):
         self.shell_vars = {}
         self.gm_count = {}
         self.letters = list(string.ascii_uppercase)
-        self.reserved_words = ['and', 'del', 'from', 'not', 'while', 'as', 'elif', 'global', 'or', 'with',
-                               'assert', 'else', 'if', 'pass', 'yield', 'break', 'except', 'import', 'print', 'class',
-                               'exec', 'in', 'raise', 'continue', 'finally', 'is', 'return', 'def', 'for', 'lambda',
-                               'try']
 
         # Create ipython widget
         self.kernel_manager = QtInProcessKernelManager()
@@ -50,7 +47,7 @@ class ConsoleWidget(QtGui.QWidget):
 
         self.kernel_client = self.kernel_manager.client()
         self.kernel_client.start_channels()
-        self.kernel_client.execute("import vcs, cdms2", silent=True)
+        self.kernel_client.execute("import vcs, cdms2, cdutil, numpy", silent=True)
 
         self.jupyter_widget = RichJupyterWidget()
         self.jupyter_widget.kernel_manager = self.kernel_manager
@@ -148,6 +145,7 @@ class ConsoleWidget(QtGui.QWidget):
     def codeExecuted(self, *varargs):
         namespace = self.kernel.shell.user_ns
         cur_keys = set(namespace)
+        variable_updated = False
 
         # get last output
         out_dict = namespace["Out"]
@@ -170,7 +168,7 @@ class ConsoleWidget(QtGui.QWidget):
                     self.variable_list.add_variable(cdms_var)
                 else:
                     self.variable_list.update_variable(cdms_var, key)
-                    self.updatedVar.emit()
+                    variable_updated = True
 
             elif is_displayplot(value) and value not in self.display_plots:
                 self.display_plots.append(value)
@@ -180,10 +178,15 @@ class ConsoleWidget(QtGui.QWidget):
             self.display_plots.append(last_line)
             self.createdPlot.emit(last_line)
 
+        self.checkDisplayPlots.emit(self.display_plots)
+
+        if variable_updated:
+            self.updatedVar.emit()
+
     def fixInvalidVariables(self, var):
         var = re.sub(' +', '_', var)
         var = re.sub("[^a-zA-Z0-9_]+", '', var)
-        if var in self.reserved_words or not re.match("^[a-zA-Z_]", var):
+        if var in reserved_words() or not re.match("^[a-zA-Z_]", var):
             var = 'cdat_' + var
         return var
 

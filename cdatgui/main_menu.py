@@ -1,9 +1,11 @@
 from PySide import QtGui, QtCore
+from functools import partial
+
 from cdatgui.cdat.importer import import_script
 from cdatgui.cdat.exporter import export_script
 from cdatgui.variables.manager import manager
 import os
-import numpy
+from cdatgui.variables.manipulations.manipulation import Manipulations
 
 
 class MainMenu(QtGui.QMenuBar):
@@ -14,6 +16,7 @@ class MainMenu(QtGui.QMenuBar):
         self.var = var
         self.gm = gm
         self.tmpl = tmpl
+        self.manipulations = Manipulations()
 
         file_menu = self.addMenu("File")
         openscript = file_menu.addAction("Open Script")
@@ -23,6 +26,55 @@ class MainMenu(QtGui.QMenuBar):
         save = file_menu.addAction("Save Script")
         save.setShortcut(QtGui.QKeySequence.Save)
         save.triggered.connect(self.save_script)
+
+        self.edit_data_menu = self.addMenu("Edit Data")
+        self.edit_data_menu.setEnabled(False)
+        seasonal_climatology = self.edit_data_menu.addAction("Seasonal Climatologies")
+        seasonal_climatology.triggered.connect(partial(self.manipulations.launchClimatologyDialog, 'seasonal'))
+
+        monthly_climatology = self.edit_data_menu.addAction("Monthly Climatologies")
+        monthly_climatology.triggered.connect(partial(self.manipulations.launchClimatologyDialog, 'monthly'))
+
+        regrid = self.edit_data_menu.addAction("Regrid")
+        regrid.triggered.connect(self.manipulations.launchRegridDialog)
+
+        average = self.edit_data_menu.addAction("Average")
+        average.triggered.connect(self.manipulations.launchAverageDialog)
+
+        summation = self.edit_data_menu.addAction("Summation")
+        summation.triggered.connect(self.manipulations.launchSumDialog)
+
+        std = self.edit_data_menu.addAction("Standard Deviation")
+        std.triggered.connect(self.manipulations.launchSTDDialog)
+
+        departure = self.edit_data_menu.addAction("Departures")
+        departure.triggered.connect(self.manipulations.launchDepartureDialog)
+
+        correlation = self.edit_data_menu.addAction("Correlation")
+        correlation.triggered.connect(
+            partial(self.manipulations.launchCorrelationOrCovarianceDialog, correlation.text()))
+
+        covariance = self.edit_data_menu.addAction("Covariance")
+        covariance.triggered.connect(partial(self.manipulations.launchCorrelationOrCovarianceDialog, covariance.text()))
+
+        lagged_correlation = self.edit_data_menu.addAction("Lagged Correlation")
+        lagged_correlation.triggered.connect(
+            partial(self.manipulations.launchCorrelationOrCovarianceDialog, lagged_correlation.text()))
+
+        lagged_covariance = self.edit_data_menu.addAction("Lagged Covariance")
+        lagged_covariance.triggered.connect(
+            partial(self.manipulations.launchCorrelationOrCovarianceDialog, lagged_covariance.text()))
+
+        linear_regression = self.edit_data_menu.addAction("Linear Regression")
+        linear_regression.triggered.connect(self.manipulations.launchLinearRegressionDialog)
+
+        geometric_mean = self.edit_data_menu.addAction("Geometric Mean")
+        geometric_mean.triggered.connect(self.manipulations.launchGeometricMeanDialog)
+
+        weighted_mean = self.edit_data_menu.addAction("Weighted Mean")
+
+        variance = self.edit_data_menu.addAction("Variance")
+        variance.triggered.connect(self.manipulations.launchVarianceDialog)
 
     def open_script(self):
         filePath = QtGui.QFileDialog.getOpenFileName(self,
@@ -50,9 +102,9 @@ class MainMenu(QtGui.QMenuBar):
         # Now we need to sync up the plotters with the displays
         for cell, display_plots in zip(cells, displays):
             cell.load(display_plots)
-        # TODO:
-        # Should also load graphics methods and templates into
-        # appropriate widgets if they're named
+            # TODO:
+            # Should also load graphics methods and templates into
+            # appropriate widgets if they're named
 
     def save_script(self):
         filePath = QtGui.QFileDialog.getSaveFileName(self, u"Save Script", "/",
