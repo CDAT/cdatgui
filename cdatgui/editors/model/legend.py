@@ -1,5 +1,6 @@
 import vcs
 import numpy
+from .levels_base import LevelsBaseModel
 
 
 def get_colormaps():
@@ -7,7 +8,7 @@ def get_colormaps():
     return sorted(vcs.elements["colormap"].keys())
 
 
-class VCSLegend(object):
+class VCSLegend(LevelsBaseModel):
     def __init__(self, gm, var, canvas=None):
         self._gm = gm
         self._var = var
@@ -37,7 +38,7 @@ class VCSLegend(object):
     def vcs_colors(self):
         """Used internally, don't worry about it."""
         levs = self.levels
-        if self._gm.fillareacolors:
+        if self._gm.fillareacolors and self._gm.fillareacolors != [1]:
             colors = self._gm.fillareacolors
             return colors
         else:
@@ -46,9 +47,12 @@ class VCSLegend(object):
                 levs = levs[1:]
             if self.ext_right:
                 levs = levs[:-1]
-            colors = vcs.getcolors(levs, colors=range(self.color_1, self.color_2))
+            if self.color_1 is None and self.color_2 is None:
+                colors = vcs.getcolors(levs, split=0)
+            else:
+                colors = vcs.getcolors(levs, colors=range(self.color_1, self.color_2))
             levs = real_levs
-            if len(colors) < len(levs):
+            if len(colors) < len(levs) - 1:
                 # Pad out colors to the right number of buckets
                 diff = len(levs) - len(colors)
                 colors += diff * colors[-1:]
@@ -63,11 +67,14 @@ class VCSLegend(object):
     @property
     def fill_style(self):
         """Use for custom fill's radio buttons."""
-        return self._gm.fillareastyle
+        if hasattr(self._gm, 'fillareastyle'):
+            return self._gm.fillareastyle
+        return None
 
     @fill_style.setter
     def fill_style(self, style):
         self._gm.fillareastyle = style.lower()
+        self._gm.fillareacolors = self.vcs_colors
 
     @property
     def color_1(self):
@@ -101,44 +108,25 @@ class VCSLegend(object):
 
     @property
     def ext_left(self):
-        return self._gm.ext_1
+        if hasattr(self._gm, "ext_1"):
+            return self._gm.ext_1
+        return None
 
     @ext_left.setter
     def ext_left(self, v):
-        self._gm.ext_1 = v
+        if hasattr(self._gm, "ext_1"):
+            self._gm.ext_1 = v
 
     @property
     def ext_right(self):
-        return self._gm.ext_2
+        if hasattr(self._gm, "ext_2"):
+            return self._gm.ext_2
+        return None
 
     @ext_right.setter
     def ext_right(self, v):
-        self._gm.ext_2 = v
-
-    @property
-    def levels(self):
-        """Used internally, don't worry about it."""
-        levs = list(self._gm.levels)
-        # Check if they're autolevels
-        if numpy.allclose(levs, 1e20):
-            if vcs.isboxfill(self._gm) == 1:
-                nlevs = self.color_2 - self.color_1 + 1
-                minval, maxval = vcs.minmax(self._var)
-                levs = vcs.mkscale(minval, maxval)
-                if len(levs) == 1:
-                    levs.append(levs[0] + .00001)
-                delta = (levs[-1] - levs[0]) / nlevs
-                levs = list(numpy.arange(levs[0], levs[-1] + delta, delta))
-            else:
-                levs = vcs.mkscale(*vcs.minmax(self._var))
-
-        # Now adjust for ext_1 nad ext_2
-        if self.ext_left:
-            levs.insert(0, -1e20)
-        if self.ext_right:
-            levs.append(1e20)
-
-        return levs
+        if hasattr(self._gm, "ext_2"):
+            self._gm.ext_2 = v
 
     @property
     def level_names(self):
@@ -182,13 +170,17 @@ class VCSLegend(object):
             self.labels = {}
         else:
             if vcs.isboxfill(self._gm):
-                self.labels = self._gm.autolabels(self._var)
+                min, max = vcs.minmax(self._var)
+                levels = self._gm.getlevels(min, max)
+                self.labels = self._gm.getlegendlabels(levels)
 
     @property
     def labels(self):
         if self._gm.legend is None:
             if vcs.isboxfill(self._gm):
-                return self._gm.autolabels(self._var)
+                min, max = vcs.minmax(self._var)
+                levels = self._gm.getlevels(min, max)
+                return self._gm.getlegendlabels(levels)
         return self._gm.legend
 
     @labels.setter
@@ -199,7 +191,7 @@ class VCSLegend(object):
         return self.vcs_colors[i]
 
     def set_level_color(self, i, v):
-        if self._gm.fillareacolors is None:
+        if self._gm.fillareacolors is None or self._gm.fillareacolors == [1]:
             self._gm.fillareacolors = self.vcs_colors
         if len(self._gm.fillareacolors) < len(self.levels):
             self._gm.fillareacolors += (len(self.levels) - len(self._gm.fillareacolors)) * self._gm.fillareacolors[-1:]

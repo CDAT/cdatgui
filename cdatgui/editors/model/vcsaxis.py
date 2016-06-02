@@ -1,11 +1,15 @@
 import vcs
 
+
 class VCSAxis(object):
     def __init__(self, gm, tmpl, axis, var):
-        self.gm = gm
-        self.tmpl = tmpl
+        self.gm = vcs.creategraphicsmethod(vcs.graphicsmethodtype(gm), gm.name)
+        self.orig_gm_name = gm.name
+        self.tmpl = vcs.createtemplate(source=tmpl)
+        self.orig_tmpl_name = tmpl.name
         self._axis = axis
         self.var = var
+        self.name = None
 
     @property
     def axis(self):
@@ -42,6 +46,12 @@ class VCSAxis(object):
             minitick_count = self.minitick_count
         else:
             minitick_count = 0
+        if isinstance(val, str):
+            if val == '*':
+                self.name = None
+            else:
+                self.name = val
+
         if self._axis == "x1":
             self.gm.xticlabels1 = val
         if self._axis == "x2":
@@ -92,8 +102,12 @@ class VCSAxis(object):
 
     @mode.setter
     def mode(self, value):
-        if value == "auto" and isinstance(self.ticks, dict):
-            self.ticks = "*"
+        # if value == "auto" and isinstance(self.ticks, dict):
+        # self.ticks = "*"
+        if value == 'even' and isinstance(self.ticks, str):
+            if self.ticks != "*":
+                step = self.step
+                self.step = step
 
     @property
     def numticks(self):
@@ -113,6 +127,10 @@ class VCSAxis(object):
             step = (right - left) / float(num)
             self.ticks = {right + n * step: right + n * step for n in range(-1 * num)}
 
+    def is_positive(self):
+        left, right = vcs.minmax(self.axis)
+        return left in self.ticks
+
     @property
     def step(self):
         ticks = self.ticks
@@ -120,7 +138,7 @@ class VCSAxis(object):
             ticks = vcs.elements["list"][ticks]
         ticks = sorted(ticks)
         left, right = vcs.minmax(self.axis)
-        return (right - left) / len(ticks)
+        return (right - left) / (len(ticks) - 1)  # pretty sure this need to be -
 
     @step.setter
     def step(self, value):
@@ -210,5 +228,26 @@ class VCSAxis(object):
         return ticks
 
     def save(self, name):
-        vcs.elements["list"][name] = self.ticks
+        if name is None:
+            raise Exception(
+                "Non str name cannot be used to save ticks")  # something got through your rock solid wall of logic
+
+        if isinstance(self.ticks, str):
+            vcs.elements["list"][name] = vcs.elements['list'][self.ticks]
+        else:
+            vcs.elements["list"][name] = self.ticks
         vcs.elements["list"][name + "_miniticks"] = self.miniticks
+
+        self.ticks = name
+        self.miniticks = name + "_miniticks"
+
+        gtype = vcs.graphicsmethodtype(self.gm)
+        del vcs.elements[gtype][self.orig_gm_name]
+        vcs.elements[gtype][self.orig_gm_name] = self.gm
+        del vcs.elements['template'][self.orig_tmpl_name]
+        vcs.elements['template'][self.orig_tmpl_name] = self.tmpl
+
+    def cancel(self):
+        gtype = vcs.graphicsmethodtype(self.gm)
+        del vcs.elements[gtype][self.gm.name]
+        del vcs.elements['template'][self.tmpl.name]

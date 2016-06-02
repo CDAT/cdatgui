@@ -9,9 +9,11 @@ COLOR_MODE = "color"
 class QColormapEditor(QtGui.QColorDialog):
     choseColormap = QtCore.Signal(str)
     choseColorIndex = QtCore.Signal(int)
+    colormapCreated = QtCore.Signal(str)
 
     def __init__(self, mode=COLORMAP_MODE, parent=None):
         QtGui.QColorDialog.__init__(self, parent)
+        self.setWindowModality(QtCore.Qt.ApplicationModal)
         self.parent = parent
         self.setOption(QtGui.QColorDialog.DontUseNativeDialog, True)
         self.setOption(QtGui.QColorDialog.NoButtons)
@@ -94,10 +96,13 @@ class QColormapEditor(QtGui.QColorDialog):
 
     def acceptClicked(self):
         # Make sure the colormap changes take effect
-        self.applyChanges()
-        self.choseColormap.emit(str(self.colormap.currentText()))
-        if self.mode == COLOR_MODE:
-            self.choseColorIndex.emit(self.cell)
+        if self.colormap.currentText() == 'default':
+            QtGui.QMessageBox.information(self, 'Cannot Modify', 'Cannot modify the default colormap')
+        else:
+            self.applyChanges()
+            self.choseColormap.emit(str(self.colormap.currentText()))
+            if self.mode == COLOR_MODE:
+                self.choseColorIndex.emit(self.cell)
 
     def selectedCell(self, ind):
         self.cell = ind
@@ -134,6 +139,7 @@ class QColormapEditor(QtGui.QColorDialog):
         self.colors.set_cell(self.cell, cr, cg, cb, ca)
 
     def rejectChanges(self):
+        self.colors.reject()
         self.close()
 
     def save(self):
@@ -150,6 +156,7 @@ class QColormapEditor(QtGui.QColorDialog):
         self.colormap.model().sort(0)
         self.colormap.setCurrentIndex(self.colormap.findText(newname))
         self.newname.setText("")
+        self.colormapCreated.emit(newname)
 
     def blend(self):
         min_index, max_index = self.colors.get_color_range()
